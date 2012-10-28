@@ -1,6 +1,12 @@
 var http = require('http');
 var https = require('https');
+
 var commonModules = require('starbox-common');
+var commonSecure = commonModules.getModule('secure');
+
+var test = require('./test.js');
+
+log = test.log;
 
 function Client(port, server, uid, password, useHttps) {
   this._server = server;
@@ -12,7 +18,7 @@ function Client(port, server, uid, password, useHttps) {
   this._http = useHttps ? https : http;
 }
 
-Client.__proto__ = {
+Client.prototype= {
   // A helper function to send request to test server.
   req: function req(path, method, headerMap, data, callback) {
     var opt = {
@@ -26,15 +32,20 @@ Client.__proto__ = {
     // Aggregrate response data.
     var data = '';
     function dataCallback(d) {
-      data += d.toString('utf8');
+      data = data + d.toString();
+      log(data);
     }
     function end() {
       callback(data);
     }
 
     // Send request and bind callback
-    var req = this._http.request(opt, dataCallback);
-    req.on('end', end);
+    var server = this._server;
+    var req = this._http.request(opt, function(res) {
+      log('Connected to: ' + server);
+      res.on('data', dataCallback);
+      res.on('end', end);
+    });
 
     if (data) {
       req.end(data);
@@ -50,33 +61,42 @@ Client.__proto__ = {
   //   result: '',
   //   info: (json object),
   // }
-  wrapCallback: function wrapCallback(cb) {
+  _wrapCallback: function wrapCallback(cb) {
     return function(d) {
       var json = JSON.parse(d);
       cb(json.result, json.info);
     }
   },
 
-  setupKey: function setupKey() {
-    this.req('/setupKey?user=' + this._uid,
+  setupKey: function setupKey(succCb, errCb) {
+    var self = this;
+    this.req('/a/getSalt/' + this._uid,
              'GET', null, null,
-             this.wrapCallback(function(res, info) {
+             this._wrapCallback(function(res, info) {
                if (res === 'OK') {
-                 log('Got response to setupKey, user: ' + this._uid);
+                 log('Got response to getSalt, user: ' + self._uid);
                  log('Salt: ' + info.salt);
-                 this._key = this.computeKey(this._password, info.salt);
+                 self._key = self.computeKey(self._password, info.salt);
+                 succCb(self._key);
                } else if (res === 'NO_SUCH_USER') {
                  log('Sever cannot find the user: ' + this._uid);
+                 errCb(res);
                } else {
                  log('Unexpected response to setupKey: ' + res);
+                 errCb(res);
                }
              }));
   },
+
+  computeKey: function computeKey(pass, salt) {
+    var key = commonSecure.getKey(salt, pass);
+    return key;
+  }
 }
 
 // This will return a reference to client and make test runner able to control
 // the client. The uid and password must the accepted by server, the test
 // accunt and password.
-exports.createClient = function(port, server, uid, password, useHttps) {
+exports.createClient = function(port, server, uid, password, useHttps, logName) {
   return new Client(port, server, uid, password, useHttps);
 }
