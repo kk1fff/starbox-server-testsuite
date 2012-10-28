@@ -2,6 +2,6 @@
   "name": "starbox-server-testsuite",
   "version": "0.0.1",
   "dependencies": {
-    "starbox-common": "https://github.com/kk1fff/starbox-common.git"
+    "starbox-common": "git://github.com/kk1fff/starbox-common.git"
   }
 }
